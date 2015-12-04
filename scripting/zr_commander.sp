@@ -6,7 +6,7 @@
 
 #pragma newdecls required // let's go new syntax! 
 
-#define PLUGIN_VERSION   "1.0"
+#define PLUGIN_VERSION   "a0.1"
 
 int Commander = -1;
 Handle g_fward_onBecome;
