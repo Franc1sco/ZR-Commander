@@ -1,28 +1,35 @@
 #include <sourcemod>
 #include <sdktools>
-#include <multicolors>
+#include <clientprefs>
+#include <colorvariables>
 #include <zombiereloaded>
 #include <zrcommander>
+#undef REQUIRE_PLUGIN
+#include <voiceannounce_ex>
+#define REQUIRE_PLUGIN
 
-#pragma newdecls required // let's go new syntax! 
-
-#define PLUGIN_VERSION   "a0.1"
+#define PLUGIN_VERSION   "a0.2"
 
 int Commander = -1;
 Handle g_fward_onBecome;
 Handle g_fward_onBecomePre;
 Handle g_fward_onLeft;
+int g_points[MAXPLAYERS + 1];
+new Handle:c_GameCredits = INVALID_HANDLE;
 
 public Plugin myinfo = {
 	name = "ZR Commander",
 	author = "Franc1sco",
 	description = "ZR commander script",
 	version = PLUGIN_VERSION,
-	url = "http://git.tf/Franc1sco/ZR-Commander"
+	url = "http://steamcommunity.com/id/franug"
 };
 
 public void OnPluginStart() 
 {
+	
+	c_GameCredits = RegClientCookie("zrpoints", "zrpoints", CookieAccess_Private);
+	
 	RegConsoleCmd("sm_c", BecomeCommander);
 	RegConsoleCmd("sm_commander", BecomeCommander);
 	RegConsoleCmd("sm_uc", ExitCommander);
@@ -34,6 +41,14 @@ public void OnPluginStart()
 	HookEvent("player_death", playerDeath); 
 
 	CreateConVar("zr_commander_version", PLUGIN_VERSION,  "Plugin version", FCVAR_REPLICATED|FCVAR_SPONLY|FCVAR_PLUGIN|FCVAR_NOTIFY|FCVAR_DONTRECORD);
+	for(new client = 1; client <= MaxClients; client++)
+	{
+		if(IsClientInGame(client))
+			if(AreClientCookiesCached(client))
+			{
+				OnClientCookiesCached(client);
+			}
+	}
 }
 
 public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max)
@@ -54,6 +69,85 @@ public APLRes AskPluginLoad2(Handle myself, bool late, char[] error, int err_max
 	
 	return APLRes_Success;
 }
+
+#if defined _voiceannounceex_included_
+public bool:OnClientSpeakingEx(client)
+{
+	if(Commander == client)
+	{
+		PrintHintTextToAll("The ZR commander %N are speaking", client);
+	}
+		
+}
+#endif
+
+public Action:HookSay(id,args)
+{
+	if(Commander == id)
+	{
+		decl String:SayText[512];
+		GetCmdArgString(SayText,sizeof(SayText));
+	
+		StripQuotes(SayText);
+	
+		if(SayText[0] == '@' || SayText[0] == '/' || SayText[0] == '!' || !SayText[0])
+			return Plugin_Continue;
+			
+		CPrintToChatAll("{darkred}[COMMANDER]{green} %N:{darkred}", id, SayText);
+		
+		return Plugin_Handled;
+	}
+	return Plugin_Continue;
+}
+
+public OnClientCookiesCached(client)
+{
+	new String:CreditsString[12];
+	GetClientCookie(client, c_GameCredits, CreditsString, sizeof(CreditsString));
+	g_points[client]  = StringToInt(CreditsString);
+}
+
+public Action:ZR_OnClientInfect(&client, &attacker, &bool:motherInfect, &bool:respawnOverride, &bool:respawn)
+{
+	if(client == Commander && motherInfect)
+	{
+		new Handle:pack;
+		CreateDataTimer(0.1, Pasado, pack);
+		WritePackCell(pack, client);
+		WritePackCell(pack, respawnOverride);
+		WritePackCell(pack, respawn);
+		
+		return Plugin_Handled;
+	}
+	return Plugin_Continue;
+}
+
+public Action:Pasado(Handle:timer, Handle:pack)
+{
+	new client;
+	new respawnOverride;
+	new respawn;
+	
+	ResetPack(pack);
+	client = ReadPackCell(pack);
+	respawnOverride = ReadPackCell(pack);
+	respawn = ReadPackCell(pack);
+	if(!IsClientInGame(client)) return;
+	new aleatorio = ObtenerClienteAleatorio(client);
+	if(aleatorio) 
+	{
+		ZR_InfectClient(aleatorio, -1, true, bool:respawnOverride, bool:respawn);
+	}
+}
+
+stock ObtenerClienteAleatorio(client)
+{
+	new clients[MaxClients+1], clientCount;
+	for (new i = 1; i <= MaxClients; i++)
+		if (IsClientInGame(i) && IsPlayerAlive(i) && ZR_IsClientHuman(i) && i != client && client != Commander)
+		clients[clientCount++] = i;
+	return (clientCount == 0) ? 0 : clients[GetRandomInt(0, clientCount-1)];
+} 
 
 public Action BecomeCommander(int client,int args) 
 {
@@ -113,6 +207,13 @@ public void OnClientDisconnect(int client)
 	if(client == Commander) 
 	{
 		RemoveTheCommander(client);
+	}
+	
+	if(AreClientCookiesCached(client))
+	{
+		new String:CreditsString[12];
+		Format(CreditsString, sizeof(CreditsString), "%i", g_points[client]);
+		SetClientCookie(client, c_GameCredits, CreditsString);
 	}
 }
 
